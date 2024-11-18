@@ -1,0 +1,19 @@
+# DBT artifacts
+target/
+dbt_modules/
+logs/
+
+# Sensitive files
+~/.dbt/profiles.yml
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+
+# Python artifacts
+__pycache__/
+*.pyc
+
+# Virtual environment
+venv/
