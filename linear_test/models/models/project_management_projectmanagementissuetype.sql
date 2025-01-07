@@ -4,32 +4,36 @@
     incremental_strategy='delete+insert',
 ) }}
 
-WITH type_list AS (
-    SELECT  
-        NOW() as created,
-        NOW() as modified,
-        'linear' as source,
-        '{}'::jsonb as last_raw_data, 
-        false as is_sub_task,
-        types.key as external_id,
-        types.name as name,
-        NULL as description,
-        'project' as scope,
-        NULL as url,
-        NULL as icon
-    FROM (
-        (SELECT 'task' as key, 'Task' as name)
-    ) as types
+WITH raw_data AS (
+    SELECT 
+        data::jsonb -> 'issueTypes' -> 'nodes' AS nodes,
+        _airbyte_raw_id,
+        _airbyte_extracted_at,
+        _airbyte_meta
+    FROM 
+        public.issuetypes
 )
 
-SELECT
+SELECT 
+    DISTINCT 
     md5(
-        project.id ||
-        type_list.external_id ||
-        'issuetypelinear'
-    ) as id,
-    type_list.*,
-    '{{ var("timestamp", run_started_at) }}' as sync_timestamp,
-    project.id as project_id
-FROM {{ ref('project_management_projectmanagementproject') }} AS project
-CROSS JOIN type_list
+        '{{ var("integration_id") }}' ||
+        (node->>'id') || 
+        'issuetype' ||
+        'linear' ||
+        '{{ var("integration_id") }}'
+    ) AS id,
+    (node->>'id') AS external_id,
+    'linear' AS source,
+    NOW() AS created,
+    NOW() AS modified,
+    '{{ var("timestamp", run_started_at) }}' AS sync_timestamp,
+    _airbyte_raw_id AS last_raw_data,
+    (node->>'name') AS name,
+    NULL AS description,
+    '{{ var("integration_id") }}'::uuid AS integration_id
+FROM 
+    raw_data,
+    jsonb_array_elements(nodes) AS node
+WHERE 
+    node->>'id' IS NOT NULL

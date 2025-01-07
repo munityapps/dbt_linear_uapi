@@ -4,33 +4,37 @@
     incremental_strategy='delete+insert',
 ) }}
 
-WITH status_list AS (
-    SELECT  
-        NOW() as created,
-        NOW() as modified,
-        'linear' as source,
-        '{}'::jsonb as last_raw_data,
-        false::boolean as default,
-        status.color as color,
-        status.order as order,
-        status.key as external_id,
-        status.name as name
-    FROM (
-        (SELECT 'done' as key, 'Done' as name, 0 as order, 'green' as color) UNION
-        (SELECT 'in_progress' as key, 'In Progress' as name, 1 as order, 'blue' as color) UNION
-        (SELECT 'todo' as key, 'To Do' as name, 2 as order, 'gray' as color)
-    ) as status
+WITH raw_data AS (
+    SELECT 
+        data::jsonb -> 'issueStatuses' -> 'nodes' AS nodes,
+        _airbyte_raw_id,
+        _airbyte_extracted_at,
+        _airbyte_meta
+    FROM 
+        public.issuestatuses
 )
 
-SELECT
+SELECT 
+    DISTINCT 
     md5(
-        project.id ||
-        status_list.external_id ||
-        'issuestatuslinear'
-    ) as id,
-    status_list.name as meta_status,
-    status_list.*,
+        '{{ var("integration_id") }}' ||
+        (node->>'id') || 
+        'issuestatus' ||
+        'linear' ||
+        '{{ var("integration_id") }}'
+    ) AS id,
+    (node->>'id') AS external_id,
+    'linear' AS source,
+    NOW() AS created,
+    NOW() AS modified,
     '{{ var("timestamp", run_started_at) }}' AS sync_timestamp,
-    project.id as project_id
-FROM {{ ref('project_management_projectmanagementproject') }} AS project
-CROSS JOIN status_list
+    _airbyte_raw_id AS last_raw_data,
+    (node->>'name') AS name,
+    (node->>'color') AS color,
+    (node->>'order')::integer AS order,
+    '{{ var("integration_id") }}'::uuid AS integration_id
+FROM 
+    raw_data,
+    jsonb_array_elements(nodes) AS node
+WHERE 
+    node->>'id' IS NOT NULL

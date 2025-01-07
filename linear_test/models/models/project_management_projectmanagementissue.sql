@@ -12,46 +12,48 @@ WITH raw_data AS (
         _airbyte_meta
     FROM 
         public.issues
-    WHERE data IS NOT NULL
 )
 
 SELECT 
     DISTINCT 
-    md5((node->>'id') || 'issue' || 'linear') AS id,
-    (node->>'id') AS external_id,
+    md5(
+        '{{ var("integration_id") }}' ||
+        (node->>'id') ||
+        'issue' ||
+        'linear'
+    ) AS id,
     NOW() AS created,
     NOW() AS modified,
-    '{{ var("timestamp", run_started_at) }}' AS sync_timestamp,
+    '{{ var("timestamp") }}' AS sync_timestamp,
+    (node->>'id') AS external_id,
     'linear' AS source,
-    _airbyte_raw_id AS last_raw_data,
-    NULL AS url,
-    COALESCE((node->>'priority')::integer, NULL) AS priority,
-    NULL AS severity,
-    (node->>'title') AS title,
+    (node->>'title') AS name,
     (node->>'description') AS description,
-    COALESCE((node->>'createdAt')::timestamp, CURRENT_TIMESTAMP) AS created_at,
-    COALESCE((node->>'updatedAt')::timestamp, CURRENT_TIMESTAMP) AS updated_at,
-    NULL AS due_date,
-    (node->'state'->>'name') = 'completed' AS complete,
-    COALESCE(
-        ARRAY(
-            SELECT label->>'name'
-            FROM jsonb_array_elements(node->'labels'->'nodes') AS label
-        ), 
-        '{}'
-    ) AS tags,
-    NULL AS group_id,
-    (node->'assignee'->>'id') AS assignee_id,
-    (node->'assignee'->>'name') AS assignee_name,
-    NULL AS creator_id,
-    NULL AS project_id,
-    NULL AS project_name,
-    (node->'state'->>'name') AS status_name,
-    (node->'state'->>'color') AS state_color,
-    NULL AS type_id,
-    FALSE AS is_milestone
+    project_table.id AS project_id,
+    user_table.id AS assignee_id,
+    status_table.id AS status_id,
+    type_table.id AS type_id,
+    (node->>'priority')::integer AS priority,
+    parent_issue.id AS parent_id,
+    '{{ var("integration_id") }}'::uuid AS integration_id,
+    _airbyte_raw_id AS last_raw_data
 FROM 
     raw_data,
     jsonb_array_elements(nodes) AS node
+LEFT JOIN {{ ref('project_management_projectmanagementproject') }} AS project_table
+    ON project_table.external_id = (node->>'projectId')
+    AND project_table.integration_id = '{{ var("integration_id") }}'
+LEFT JOIN {{ ref('project_management_projectmanagementuser') }} AS user_table
+    ON user_table.external_id = (node->>'assigneeId')
+    AND user_table.integration_id = '{{ var("integration_id") }}'
+LEFT JOIN {{ ref('project_management_projectmanagementissuestatus') }} AS status_table
+    ON status_table.external_id = (node->>'stateId')
+    AND status_table.integration_id = '{{ var("integration_id") }}'
+LEFT JOIN {{ ref('project_management_projectmanagementissuetype') }} AS type_table
+    ON type_table.external_id = (node->>'typeId')
+    AND type_table.integration_id = '{{ var("integration_id") }}'
+LEFT JOIN {{ ref('project_management_projectmanagementissue') }} AS parent_issue
+    ON parent_issue.external_id = (node->>'parentId')
+    AND parent_issue.integration_id = '{{ var("integration_id") }}'
 WHERE 
     node->>'id' IS NOT NULL
