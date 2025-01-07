@@ -31,5 +31,5 @@ SELECT
     type_list.*,
     '{{ var("timestamp", run_started_at) }}' as sync_timestamp,
     project.id as project_id
-FROM {{ ref('linear_projects') }} AS project
+FROM {{ ref('project_management_projectmanagementproject') }} AS project
 CROSS JOIN type_list
